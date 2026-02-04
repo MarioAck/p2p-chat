@@ -61,7 +61,8 @@ function handleMessage(ws, message) {
     }
 
     case 'join-room': {
-      const { code } = message;
+      // Support both formats: { code } and { data: { code } }
+      const code = message.code || (message.data && message.data.code);
       if (!code) {
         ws.send(JSON.stringify({ type: 'error', error: 'Room code is required' }));
         break;
@@ -90,7 +91,7 @@ function handleMessage(ws, message) {
     }
 
     case 'check-room': {
-      const { code } = message;
+      const code = message.code || (message.data && message.data.code);
       if (!code) {
         ws.send(JSON.stringify({ type: 'room-status', exists: false, isFull: false }));
         break;
