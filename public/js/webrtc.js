@@ -125,8 +125,14 @@ class WebRTCManager {
   }
 
   async handleOffer(msg) {
-    const { sdp } = msg;
-    console.log('Received offer');
+    // Support both { sdp } and { data: { sdp } } formats
+    const sdp = msg.sdp || (msg.data && msg.data.sdp);
+    console.log('Received offer', sdp ? 'valid' : 'invalid');
+
+    if (!sdp) {
+      console.error('No SDP in offer message:', msg);
+      return;
+    }
 
     // Guest creates connection when receiving offer
     this.createConnection(false);
@@ -143,10 +149,11 @@ class WebRTCManager {
   }
 
   async handleAnswer(msg) {
-    const { sdp } = msg;
-    console.log('Received answer');
+    // Support both { sdp } and { data: { sdp } } formats
+    const sdp = msg.sdp || (msg.data && msg.data.sdp);
+    console.log('Received answer', sdp ? 'valid' : 'invalid');
 
-    if (this.pc) {
+    if (this.pc && sdp) {
       try {
         await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
       } catch (e) {
@@ -156,7 +163,8 @@ class WebRTCManager {
   }
 
   async handleIceCandidate(msg) {
-    const { candidate } = msg;
+    // Support both { candidate } and { data: { candidate } } formats
+    const candidate = msg.candidate || (msg.data && msg.data.candidate);
 
     if (this.pc && candidate) {
       try {
