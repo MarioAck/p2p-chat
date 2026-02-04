@@ -68,7 +68,9 @@ class SignalingClient {
 
   send(type, data = {}) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, ...data }));
+      const message = Object.assign({ type }, data);
+      console.log('Sending:', message);
+      this.ws.send(JSON.stringify(message));
     }
   }
 

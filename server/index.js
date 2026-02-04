@@ -50,6 +50,7 @@ wss.on('connection', (ws) => {
 
 function handleMessage(ws, message) {
   const { type } = message;
+  console.log('Received message:', JSON.stringify(message));
 
   switch (type) {
     case 'create-room': {
