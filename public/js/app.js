@@ -33,7 +33,10 @@ class App {
       this.signaling.send('join-room', { code: this.roomCode });
     });
 
-    this.signaling.on('room-joined', ({ code, isHost }) => {
+    this.signaling.on('room-joined', (msg) => {
+      console.log('room-joined message:', msg);
+      const code = msg.code || (msg.data && msg.data.code);
+      const isHost = msg.isHost !== undefined ? msg.isHost : (msg.data && msg.data.isHost);
       console.log('Joined room:', code, 'as', isHost ? 'host' : 'guest');
       this.isHost = isHost;
       this.webrtc.setHost(isHost);
@@ -46,8 +49,9 @@ class App {
       }
     });
 
-    this.signaling.on('error', ({ error }) => {
-      console.error('Room error:', error);
+    this.signaling.on('error', (msg) => {
+      const error = msg.error || (msg.data && msg.data.error);
+      console.error('Room error:', error, 'full msg:', msg);
       if (error === 'Room not found') {
         this.ui.addSystemMessage('Room not found. It may have expired.');
         this.ui.setConnectionStatus('disconnected');

@@ -25,15 +25,19 @@ class WebRTCManager {
   }
 
   setHost(isHost) {
+    console.log('WebRTC setHost:', isHost);
     this.isHost = isHost;
   }
 
   onPeerJoined() {
+    console.log('WebRTC onPeerJoined called, isHost:', this.isHost);
     // Host initiates connection when guest joins
     if (this.isHost) {
       console.log('Peer joined, initiating WebRTC connection');
       this.emit('peer-joined');
       this.createConnection(true);
+    } else {
+      console.log('Not host, waiting for offer...');
     }
   }
 
