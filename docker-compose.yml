@@ -1,0 +1,8 @@
+services:
+  p2p-chat:
+    build: .
+    # Host network required for UDP broadcast discovery to work
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - PORT=3000

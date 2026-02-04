@@ -1,0 +1,281 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 20px;
+}
+
+header h1 {
+  color: #4ecca3;
+  font-size: 1.5rem;
+}
+
+#local-info {
+  font-size: 0.9rem;
+  color: #888;
+}
+
+#local-info code {
+  background: #2d2d44;
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #4ecca3;
+}
+
+.main-content {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 250px;
+  flex-shrink: 0;
+}
+
+.sidebar h2 {
+  font-size: 1rem;
+  color: #888;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#peer-list {
+  list-style: none;
+  background: #16213e;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+#peer-list li {
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#peer-list li:last-child {
+  margin-bottom: 0;
+}
+
+#peer-list li.no-peers {
+  color: #666;
+  font-style: italic;
+  justify-content: center;
+}
+
+.peer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.peer-id {
+  font-family: monospace;
+  color: #4ecca3;
+  font-size: 0.9rem;
+}
+
+.peer-address {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.connect-btn {
+  background: #4ecca3;
+  color: #1a1a2e;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 0.8rem;
+  transition: background 0.2s;
+}
+
+.connect-btn:hover {
+  background: #3db892;
+}
+
+.connect-btn:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.connect-btn.connected {
+  background: #2d4a3e;
+  color: #4ecca3;
+}
+
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #16213e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#connection-status {
+  padding: 10px 15px;
+  text-align: center;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #2d2d44;
+}
+
+#connection-status.disconnected {
+  background: #2d2d44;
+  color: #888;
+}
+
+#connection-status.connecting {
+  background: #3d3d1e;
+  color: #f0c040;
+}
+
+#connection-status.connected {
+  background: #1e3d2d;
+  color: #4ecca3;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  max-width: 70%;
+  padding: 10px 15px;
+  border-radius: 12px;
+  word-wrap: break-word;
+}
+
+.message.sent {
+  align-self: flex-end;
+  background: #4ecca3;
+  color: #1a1a2e;
+  border-bottom-right-radius: 4px;
+}
+
+.message.received {
+  align-self: flex-start;
+  background: #2d2d44;
+  color: #eee;
+  border-bottom-left-radius: 4px;
+}
+
+.message .timestamp {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-top: 4px;
+  display: block;
+}
+
+.system-message {
+  text-align: center;
+  color: #666;
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 10px;
+}
+
+.message-input {
+  display: flex;
+  padding: 15px;
+  gap: 10px;
+  border-top: 1px solid #2d2d44;
+}
+
+#message-input {
+  flex: 1;
+  padding: 12px 15px;
+  border: none;
+  border-radius: 8px;
+  background: #2d2d44;
+  color: #eee;
+  font-size: 1rem;
+}
+
+#message-input:focus {
+  outline: 2px solid #4ecca3;
+}
+
+#message-input:disabled {
+  background: #1a1a2e;
+  color: #555;
+}
+
+#send-btn {
+  padding: 12px 24px;
+  background: #4ecca3;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#send-btn:hover:not(:disabled) {
+  background: #3db892;
+}
+
+#send-btn:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  #peer-list {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px;
+  }
+
+  #peer-list li {
+    flex-shrink: 0;
+  }
+}
