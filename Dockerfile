@@ -12,9 +12,8 @@ RUN npm ci --only=production
 COPY server/ ./server/
 COPY public/ ./public/
 
-# Expose ports
-EXPOSE 3000/tcp
-EXPOSE 41234/udp
+# Expose port
+EXPOSE 3000
 
 # Run the application
 CMD ["node", "server/index.js"]

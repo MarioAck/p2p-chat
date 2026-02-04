@@ -1,11 +1,16 @@
 class WebRTCManager {
   constructor(signaling) {
     this.signaling = signaling;
-    this.connections = new Map(); // peerId -> { pc, dataChannel }
+    this.pc = null;
+    this.dataChannel = null;
     this.handlers = {};
+    this.isHost = false;
 
     this.rtcConfig = {
-      iceServers: [] // Empty for local network - no STUN/TURN needed
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
     };
 
     this.setupSignalingHandlers();
@@ -15,119 +20,135 @@ class WebRTCManager {
     this.signaling.on('offer', (msg) => this.handleOffer(msg));
     this.signaling.on('answer', (msg) => this.handleAnswer(msg));
     this.signaling.on('ice-candidate', (msg) => this.handleIceCandidate(msg));
+    this.signaling.on('peer-joined', () => this.onPeerJoined());
+    this.signaling.on('peer-left', () => this.onPeerLeft());
   }
 
-  async connect(peerId) {
-    console.log(`Initiating connection to ${peerId}`);
+  setHost(isHost) {
+    this.isHost = isHost;
+  }
 
-    const pc = new RTCPeerConnection(this.rtcConfig);
-    const connection = { pc, dataChannel: null, peerId };
-    this.connections.set(peerId, connection);
-
-    this.setupPeerConnection(pc, peerId);
-
-    // Create data channel (initiator creates it)
-    const dataChannel = pc.createDataChannel('chat', {
-      ordered: true
-    });
-    connection.dataChannel = dataChannel;
-    this.setupDataChannel(dataChannel, peerId);
-
-    // Create and send offer
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      this.signaling.send('offer', offer, peerId);
-    } catch (e) {
-      console.error('Failed to create offer:', e);
-      this.emit('error', { peerId, error: e });
+  onPeerJoined() {
+    // Host initiates connection when guest joins
+    if (this.isHost) {
+      console.log('Peer joined, initiating WebRTC connection');
+      this.emit('peer-joined');
+      this.createConnection(true);
     }
   }
 
-  setupPeerConnection(pc, peerId) {
-    pc.onicecandidate = (event) => {
+  onPeerLeft() {
+    console.log('Peer left');
+    this.emit('peer-left');
+    this.cleanup();
+  }
+
+  createConnection(isInitiator) {
+    if (this.pc) {
+      this.cleanup();
+    }
+
+    console.log('Creating peer connection, initiator:', isInitiator);
+    this.pc = new RTCPeerConnection(this.rtcConfig);
+    this.setupPeerConnection();
+
+    if (isInitiator) {
+      // Create data channel (initiator creates it)
+      this.dataChannel = this.pc.createDataChannel('chat', {
+        ordered: true
+      });
+      this.setupDataChannel(this.dataChannel);
+      this.createOffer();
+    }
+  }
+
+  setupPeerConnection() {
+    this.pc.onicecandidate = (event) => {
       if (event.candidate) {
-        this.signaling.send('ice-candidate', event.candidate, peerId);
+        this.signaling.send('ice-candidate', { candidate: event.candidate });
       }
     };
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`ICE state (${peerId}):`, pc.iceConnectionState);
+    this.pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', this.pc.iceConnectionState);
 
-      if (pc.iceConnectionState === 'connected') {
-        this.emit('connected', { peerId });
-      } else if (pc.iceConnectionState === 'disconnected' ||
-                 pc.iceConnectionState === 'failed') {
-        this.emit('disconnected', { peerId });
-        this.cleanup(peerId);
+      if (this.pc.iceConnectionState === 'connected') {
+        this.emit('connected');
+      } else if (this.pc.iceConnectionState === 'disconnected' ||
+                 this.pc.iceConnectionState === 'failed') {
+        this.emit('disconnected');
       }
     };
 
-    pc.ondatachannel = (event) => {
-      console.log(`Data channel received from ${peerId}`);
-      const connection = this.connections.get(peerId);
-      if (connection) {
-        connection.dataChannel = event.channel;
-        this.setupDataChannel(event.channel, peerId);
-      }
+    this.pc.ondatachannel = (event) => {
+      console.log('Data channel received');
+      this.dataChannel = event.channel;
+      this.setupDataChannel(event.channel);
     };
   }
 
-  setupDataChannel(dc, peerId) {
+  setupDataChannel(dc) {
     dc.onopen = () => {
-      console.log(`Data channel open with ${peerId}`);
-      this.emit('channel-open', { peerId });
+      console.log('Data channel open');
+      this.emit('channel-open');
     };
 
     dc.onclose = () => {
-      console.log(`Data channel closed with ${peerId}`);
-      this.emit('channel-close', { peerId });
+      console.log('Data channel closed');
+      this.emit('channel-close');
     };
 
     dc.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        this.emit('message', { peerId, ...msg });
+        this.emit('message', msg);
       } catch (e) {
         // Plain text message
-        this.emit('message', { peerId, text: event.data });
+        this.emit('message', { text: event.data });
       }
     };
 
     dc.onerror = (error) => {
-      console.error(`Data channel error (${peerId}):`, error);
+      console.error('Data channel error:', error);
     };
   }
 
+  async createOffer() {
+    try {
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
+      this.signaling.send('offer', { sdp: offer });
+    } catch (e) {
+      console.error('Failed to create offer:', e);
+      this.emit('error', { error: e });
+    }
+  }
+
   async handleOffer(msg) {
-    const { fromPeerId, data: offer } = msg;
-    console.log(`Received offer from ${fromPeerId}`);
+    const { sdp } = msg;
+    console.log('Received offer');
 
-    const pc = new RTCPeerConnection(this.rtcConfig);
-    const connection = { pc, dataChannel: null, peerId: fromPeerId };
-    this.connections.set(fromPeerId, connection);
-
-    this.setupPeerConnection(pc, fromPeerId);
+    // Guest creates connection when receiving offer
+    this.createConnection(false);
 
     try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      this.signaling.send('answer', answer, fromPeerId);
+      await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await this.pc.createAnswer();
+      await this.pc.setLocalDescription(answer);
+      this.signaling.send('answer', { sdp: answer });
     } catch (e) {
       console.error('Failed to handle offer:', e);
-      this.emit('error', { peerId: fromPeerId, error: e });
+      this.emit('error', { error: e });
     }
   }
 
   async handleAnswer(msg) {
-    const { fromPeerId, data: answer } = msg;
-    console.log(`Received answer from ${fromPeerId}`);
+    const { sdp } = msg;
+    console.log('Received answer');
 
-    const connection = this.connections.get(fromPeerId);
-    if (connection) {
+    if (this.pc) {
       try {
-        await connection.pc.setRemoteDescription(new RTCSessionDescription(answer));
+        await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
       } catch (e) {
         console.error('Failed to handle answer:', e);
       }
@@ -135,23 +156,20 @@ class WebRTCManager {
   }
 
   async handleIceCandidate(msg) {
-    const { fromPeerId, data: candidate } = msg;
+    const { candidate } = msg;
 
-    const connection = this.connections.get(fromPeerId);
-    if (connection) {
+    if (this.pc && candidate) {
       try {
-        await connection.pc.addIceCandidate(new RTCIceCandidate(candidate));
+        await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
         console.error('Failed to add ICE candidate:', e);
       }
     }
   }
 
-  sendMessage(peerId, text) {
-    const connection = this.connections.get(peerId);
-    if (connection && connection.dataChannel &&
-        connection.dataChannel.readyState === 'open') {
-      connection.dataChannel.send(JSON.stringify({
+  sendMessage(text) {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.dataChannel.send(JSON.stringify({
         text,
         timestamp: Date.now()
       }));
@@ -160,31 +178,18 @@ class WebRTCManager {
     return false;
   }
 
-  isConnected(peerId) {
-    const connection = this.connections.get(peerId);
-    return connection &&
-           connection.dataChannel &&
-           connection.dataChannel.readyState === 'open';
+  isConnected() {
+    return this.dataChannel && this.dataChannel.readyState === 'open';
   }
 
-  getConnectedPeers() {
-    const connected = [];
-    for (const [peerId, conn] of this.connections) {
-      if (conn.dataChannel && conn.dataChannel.readyState === 'open') {
-        connected.push(peerId);
-      }
+  cleanup() {
+    if (this.dataChannel) {
+      this.dataChannel.close();
+      this.dataChannel = null;
     }
-    return connected;
-  }
-
-  cleanup(peerId) {
-    const connection = this.connections.get(peerId);
-    if (connection) {
-      if (connection.dataChannel) {
-        connection.dataChannel.close();
-      }
-      connection.pc.close();
-      this.connections.delete(peerId);
+    if (this.pc) {
+      this.pc.close();
+      this.pc = null;
     }
   }
 

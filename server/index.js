@@ -1,54 +1,108 @@
 const express = require('express');
 const http = require('http');
+const WebSocket = require('ws');
 const path = require('path');
-const crypto = require('crypto');
-const Discovery = require('./discovery');
-const SignalingServer = require('./signaling');
+const rooms = require('./rooms');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
-const PEER_ID = crypto.randomBytes(4).toString('hex');
 
-console.log(`Starting P2P Chat Server`);
-console.log(`Peer ID: ${PEER_ID}`);
-
-// Express app for static files
-const app = express();
+// Serve static files
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Endpoint to get local peer info
-app.get('/api/info', (req, res) => {
-  res.json({
-    peerId: PEER_ID,
-    localIPs: discovery.getLocalIPs()
+// Room route - serves chat page
+app.get('/room/:code', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/chat.html'));
+});
+
+// Cleanup stale rooms every hour
+setInterval(() => rooms.cleanupStaleRooms(), 3600000);
+
+// WebSocket handling
+wss.on('connection', (ws) => {
+  console.log('Client connected');
+
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      handleMessage(ws, message);
+    } catch (err) {
+      console.error('Invalid message:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('Client disconnected');
+    const peer = rooms.leaveRoom(ws);
+
+    if (peer && peer.readyState === WebSocket.OPEN) {
+      peer.send(JSON.stringify({ type: 'peer-left' }));
+    }
+  });
+
+  ws.on('error', (err) => {
+    console.error('WebSocket error:', err);
   });
 });
 
-// HTTP server
-const server = http.createServer(app);
+function handleMessage(ws, message) {
+  const { type } = message;
 
-// Initialize discovery
-const discovery = new Discovery(PEER_ID, PORT);
+  switch (type) {
+    case 'create-room': {
+      const code = rooms.createRoom(ws);
+      ws.send(JSON.stringify({ type: 'room-created', code }));
+      console.log(`Room created: ${code}`);
+      break;
+    }
 
-// Initialize signaling
-const signaling = new SignalingServer(discovery);
-signaling.attach(server);
+    case 'join-room': {
+      const { code } = message;
+      const result = rooms.joinRoom(code.toUpperCase(), ws);
 
-// Start server
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`HTTP/WebSocket server running on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT} in your browser`);
-  console.log('');
-  console.log('Local IPs:', discovery.getLocalIPs().join(', '));
-  console.log('');
+      if (result.success) {
+        ws.send(JSON.stringify({ type: 'room-joined', code: code.toUpperCase() }));
 
-  // Start discovery after server is ready
-  discovery.start();
-});
+        // Notify host that guest joined
+        const host = result.room.host;
+        if (host && host.readyState === WebSocket.OPEN) {
+          host.send(JSON.stringify({ type: 'peer-joined' }));
+        }
+        console.log(`Guest joined room: ${code}`);
+      } else {
+        ws.send(JSON.stringify({ type: 'error', error: result.error }));
+      }
+      break;
+    }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nShutting down...');
-  discovery.stop();
-  server.close();
-  process.exit(0);
+    case 'check-room': {
+      const { code } = message;
+      const exists = rooms.roomExists(code.toUpperCase());
+      const room = rooms.getRoom(code.toUpperCase());
+      const isFull = room && room.guest !== null;
+      ws.send(JSON.stringify({ type: 'room-status', exists, isFull }));
+      break;
+    }
+
+    // WebRTC signaling - relay to peer
+    case 'offer':
+    case 'answer':
+    case 'ice-candidate': {
+      const peer = rooms.getPeer(ws);
+      if (peer && peer.readyState === WebSocket.OPEN) {
+        peer.send(JSON.stringify(message));
+      }
+      break;
+    }
+
+    default:
+      console.log('Unknown message type:', type);
+  }
+}
+
+server.listen(PORT, () => {
+  console.log(`P2P Chat server running on http://localhost:${PORT}`);
 });

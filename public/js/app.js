@@ -4,65 +4,90 @@ class App {
     this.signaling = new SignalingClient();
     this.webrtc = new WebRTCManager(this.signaling);
 
-    this.myPeerId = null;
-    this.peers = [];
-    this.activePeerId = null;
+    this.roomCode = null;
+    this.isHost = false;
 
     this.init();
   }
 
-  async init() {
-    // Fetch local peer info
-    try {
-      const response = await fetch('/api/info');
-      const info = await response.json();
-      this.myPeerId = info.peerId;
-      this.ui.setLocalPeerId(info.peerId);
-    } catch (e) {
-      console.error('Failed to get peer info:', e);
+  init() {
+    // Get room code from URL
+    const pathParts = window.location.pathname.split('/');
+    const roomIndex = pathParts.indexOf('room');
+    if (roomIndex !== -1 && pathParts[roomIndex + 1]) {
+      this.roomCode = pathParts[roomIndex + 1].toUpperCase();
+      this.ui.setRoomCode(this.roomCode);
+    } else {
+      // No room code, redirect to home
+      window.location.href = '/';
+      return;
     }
 
     // Setup UI callbacks
-    this.ui.onConnect = (peerId) => this.connectToPeer(peerId);
     this.ui.onSendMessage = (text) => this.sendMessage(text);
 
     // Setup signaling handlers
-    this.signaling.on('peer-list', (msg) => {
-      this.peers = msg.peers;
-      this.updatePeerList();
+    this.signaling.on('connected', () => {
+      console.log('Connected to signaling server');
+      // Join the room
+      this.signaling.send('join-room', { code: this.roomCode });
+    });
+
+    this.signaling.on('room-joined', ({ code }) => {
+      console.log('Joined room as guest:', code);
+      this.isHost = false;
+      this.webrtc.setHost(false);
+      this.ui.setConnectionStatus('connecting');
+      this.ui.addSystemMessage('Joined room. Waiting for connection...');
+    });
+
+    this.signaling.on('error', ({ error }) => {
+      console.error('Room error:', error);
+      if (error === 'Room not found') {
+        this.ui.addSystemMessage('Room not found. It may have expired.');
+        this.ui.setConnectionStatus('disconnected');
+      } else if (error === 'Room is full') {
+        this.ui.addSystemMessage('Room is full. Only 2 people can join.');
+        this.ui.setConnectionStatus('disconnected');
+      } else {
+        this.ui.addSystemMessage('Error: ' + error);
+      }
+    });
+
+    this.signaling.on('peer-joined', () => {
+      // This means we are the host and someone joined
+      this.isHost = true;
+      this.webrtc.setHost(true);
+      this.ui.setConnectionStatus('connecting');
+      this.ui.addSystemMessage('Peer joined! Establishing connection...');
+    });
+
+    this.signaling.on('peer-left', () => {
+      this.ui.setConnectionStatus('disconnected');
+      this.ui.addSystemMessage('Peer disconnected.');
     });
 
     // Setup WebRTC handlers
-    this.webrtc.on('channel-open', ({ peerId }) => {
-      this.activePeerId = peerId;
-      this.ui.setConnectionStatus('connected', peerId);
-      this.ui.addSystemMessage(`Connected to ${peerId}`);
-      this.updatePeerList();
+    this.webrtc.on('channel-open', () => {
+      this.ui.setConnectionStatus('connected');
+      this.ui.addSystemMessage('P2P connection established! You can now chat securely.');
     });
 
-    this.webrtc.on('channel-close', ({ peerId }) => {
-      if (this.activePeerId === peerId) {
-        this.activePeerId = null;
-        this.ui.setConnectionStatus('disconnected');
-        this.ui.addSystemMessage(`Disconnected from ${peerId}`);
-      }
-      this.updatePeerList();
+    this.webrtc.on('channel-close', () => {
+      this.ui.setConnectionStatus('disconnected');
+      this.ui.addSystemMessage('Connection closed.');
     });
 
-    this.webrtc.on('disconnected', ({ peerId }) => {
-      if (this.activePeerId === peerId) {
-        this.activePeerId = null;
-        this.ui.setConnectionStatus('disconnected');
-      }
-      this.updatePeerList();
+    this.webrtc.on('disconnected', () => {
+      this.ui.setConnectionStatus('disconnected');
     });
 
-    this.webrtc.on('message', ({ peerId, text, timestamp }) => {
+    this.webrtc.on('message', ({ text, timestamp }) => {
       this.ui.addMessage(text, 'received', timestamp);
     });
 
-    this.webrtc.on('error', ({ peerId, error }) => {
-      this.ui.addSystemMessage(`Connection error with ${peerId}`);
+    this.webrtc.on('error', ({ error }) => {
+      this.ui.addSystemMessage('Connection error: ' + error.message);
       this.ui.setConnectionStatus('disconnected');
     });
 
@@ -70,23 +95,11 @@ class App {
     this.signaling.connect();
   }
 
-  connectToPeer(peerId) {
-    this.ui.setConnectionStatus('connecting', peerId);
-    this.webrtc.connect(peerId);
-  }
-
   sendMessage(text) {
-    if (this.activePeerId) {
-      const sent = this.webrtc.sendMessage(this.activePeerId, text);
-      if (sent) {
-        this.ui.addMessage(text, 'sent');
-      }
+    const sent = this.webrtc.sendMessage(text);
+    if (sent) {
+      this.ui.addMessage(text, 'sent');
     }
-  }
-
-  updatePeerList() {
-    const connectedPeers = this.webrtc.getConnectedPeers();
-    this.ui.updatePeerList(this.peers, connectedPeers);
   }
 }
 

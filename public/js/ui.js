@@ -1,8 +1,7 @@
 class UI {
   constructor() {
     this.elements = {
-      myPeerId: document.getElementById('my-peer-id'),
-      peerList: document.getElementById('peer-list'),
+      roomCode: document.getElementById('room-code'),
       connectionStatus: document.getElementById('connection-status'),
       messages: document.getElementById('messages'),
       messageForm: document.getElementById('message-form'),
@@ -10,9 +9,7 @@ class UI {
       sendBtn: document.getElementById('send-btn')
     };
 
-    this.onConnect = null;
     this.onSendMessage = null;
-    this.connectedPeerId = null;
 
     this.setupEventListeners();
   }
@@ -28,64 +25,29 @@ class UI {
     });
   }
 
-  setLocalPeerId(peerId) {
-    this.elements.myPeerId.textContent = peerId;
-  }
-
-  updatePeerList(peers, connectedPeers = []) {
-    const list = this.elements.peerList;
-    list.innerHTML = '';
-
-    if (peers.length === 0) {
-      list.innerHTML = '<li class="no-peers">Searching for peers...</li>';
-      return;
+  setRoomCode(code) {
+    if (this.elements.roomCode) {
+      this.elements.roomCode.textContent = code;
     }
-
-    peers.forEach(peer => {
-      const li = document.createElement('li');
-      const isConnected = connectedPeers.includes(peer.peerId);
-
-      li.innerHTML = `
-        <div class="peer-info">
-          <span class="peer-id">${peer.peerId}</span>
-          <span class="peer-address">${peer.address}</span>
-        </div>
-        <button class="connect-btn ${isConnected ? 'connected' : ''}"
-                data-peer-id="${peer.peerId}"
-                ${isConnected ? 'disabled' : ''}>
-          ${isConnected ? 'Connected' : 'Connect'}
-        </button>
-      `;
-
-      const btn = li.querySelector('.connect-btn');
-      if (!isConnected) {
-        btn.addEventListener('click', () => {
-          if (this.onConnect) {
-            this.onConnect(peer.peerId);
-          }
-        });
-      }
-
-      list.appendChild(li);
-    });
   }
 
-  setConnectionStatus(status, peerId = null) {
+  setConnectionStatus(status, extra = '') {
     const el = this.elements.connectionStatus;
     el.className = 'status ' + status;
 
     switch (status) {
       case 'disconnected':
-        el.textContent = 'No peer connected';
-        this.connectedPeerId = null;
+        el.textContent = 'Peer disconnected';
         this.setInputEnabled(false);
         break;
       case 'connecting':
-        el.textContent = `Connecting to ${peerId}...`;
+        el.textContent = 'Connecting...';
+        break;
+      case 'waiting':
+        el.textContent = 'Waiting for peer to join...';
         break;
       case 'connected':
-        el.textContent = `Connected to ${peerId}`;
-        this.connectedPeerId = peerId;
+        el.textContent = 'Connected - P2P Active';
         this.setInputEnabled(true);
         break;
     }

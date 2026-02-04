@@ -4,6 +4,7 @@ class SignalingClient {
     this.handlers = {};
     this.reconnectTimer = null;
     this.reconnectDelay = 1000;
+    this.shouldReconnect = true;
   }
 
   connect() {
@@ -11,6 +12,7 @@ class SignalingClient {
     const wsUrl = `${protocol}//${window.location.host}`;
 
     this.ws = new WebSocket(wsUrl);
+    this.shouldReconnect = true;
 
     this.ws.onopen = () => {
       console.log('Signaling connected');
@@ -30,12 +32,26 @@ class SignalingClient {
     this.ws.onclose = () => {
       console.log('Signaling disconnected');
       this.emit('disconnected');
-      this.scheduleReconnect();
+      if (this.shouldReconnect) {
+        this.scheduleReconnect();
+      }
     };
 
     this.ws.onerror = (error) => {
       console.error('Signaling error:', error);
     };
+  }
+
+  disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
   }
 
   scheduleReconnect() {
@@ -50,9 +66,9 @@ class SignalingClient {
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000);
   }
 
-  send(type, data, targetPeerId = null) {
+  send(type, data = {}) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type, data, targetPeerId }));
+      this.ws.send(JSON.stringify({ type, ...data }));
     }
   }
 

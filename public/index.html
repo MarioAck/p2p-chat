@@ -3,54 +3,181 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>P2P Local Chat</title>
+  <title>P2P Chat - Create or Join Room</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <div class="container">
+  <div class="container landing">
     <header>
-      <h1>P2P Local Chat</h1>
-      <div id="local-info">
-        <span>Your ID: </span><code id="my-peer-id">Loading...</code>
-      </div>
+      <h1>P2P Chat</h1>
+      <p class="subtitle">Secure peer-to-peer messaging</p>
     </header>
 
-    <div class="main-content">
-      <aside class="sidebar">
-        <h2>Peers on Network</h2>
-        <ul id="peer-list">
-          <li class="no-peers">Searching for peers...</li>
-        </ul>
-      </aside>
+    <main class="landing-content">
+      <div class="card create-section">
+        <h2>Create a Room</h2>
+        <p>Start a new chat room and share the link with someone</p>
+        <button id="create-room-btn" class="primary-btn">Create Room</button>
+      </div>
 
-      <main class="chat-area">
-        <div id="connection-status" class="status disconnected">
-          No peer connected
-        </div>
+      <div class="divider">
+        <span>or</span>
+      </div>
 
-        <div id="messages">
-          <div class="system-message">
-            Welcome! Connect to a peer to start chatting.
-          </div>
-        </div>
-
-        <form id="message-form" class="message-input">
+      <div class="card join-section">
+        <h2>Join a Room</h2>
+        <p>Enter a room code to join an existing chat</p>
+        <form id="join-form">
           <input
             type="text"
-            id="message-input"
-            placeholder="Type a message..."
+            id="room-code-input"
+            placeholder="Enter room code (e.g., ABC123)"
+            maxlength="6"
             autocomplete="off"
-            disabled
           >
-          <button type="submit" id="send-btn" disabled>Send</button>
+          <button type="submit" class="secondary-btn">Join Room</button>
         </form>
-      </main>
+        <p id="join-error" class="error-text"></p>
+      </div>
+    </main>
+
+    <!-- Room Created Modal -->
+    <div id="room-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Room Created!</h2>
+        <p>Share this link or QR code with someone to start chatting:</p>
+
+        <div class="room-link-section">
+          <input type="text" id="room-link" readonly>
+          <button id="copy-link-btn" class="icon-btn" title="Copy link">Copy</button>
+        </div>
+
+        <div class="qr-section">
+          <canvas id="qr-canvas"></canvas>
+        </div>
+
+        <div class="room-code-display">
+          <span>Room Code:</span>
+          <code id="display-room-code"></code>
+        </div>
+
+        <p class="waiting-text" id="waiting-text">Waiting for someone to join...</p>
+
+        <button id="cancel-room-btn" class="text-btn">Cancel</button>
+      </div>
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="js/signaling.js"></script>
-  <script src="js/webrtc.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/app.js"></script>
+  <script>
+    const signaling = new SignalingClient();
+    let currentRoomCode = null;
+
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const joinForm = document.getElementById('join-form');
+    const roomCodeInput = document.getElementById('room-code-input');
+    const joinError = document.getElementById('join-error');
+    const roomModal = document.getElementById('room-modal');
+    const roomLinkInput = document.getElementById('room-link');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+    const displayRoomCode = document.getElementById('display-room-code');
+    const qrCanvas = document.getElementById('qr-canvas');
+    const cancelRoomBtn = document.getElementById('cancel-room-btn');
+    const waitingText = document.getElementById('waiting-text');
+
+    // Check if joining from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinCode = urlParams.get('join');
+    if (joinCode) {
+      roomCodeInput.value = joinCode.toUpperCase();
+    }
+
+    signaling.on('connected', () => {
+      console.log('Connected to signaling server');
+    });
+
+    signaling.on('room-created', ({ code }) => {
+      currentRoomCode = code;
+      showRoomModal(code);
+    });
+
+    signaling.on('room-joined', ({ code }) => {
+      // Redirect to chat page
+      window.location.href = `/room/${code}`;
+    });
+
+    signaling.on('peer-joined', () => {
+      // Redirect host to chat page when guest joins
+      if (currentRoomCode) {
+        window.location.href = `/room/${currentRoomCode}`;
+      }
+    });
+
+    signaling.on('error', ({ error }) => {
+      joinError.textContent = error;
+    });
+
+    signaling.connect();
+
+    createRoomBtn.addEventListener('click', () => {
+      signaling.send('create-room');
+    });
+
+    joinForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = roomCodeInput.value.trim().toUpperCase();
+      if (code.length !== 6) {
+        joinError.textContent = 'Room code must be 6 characters';
+        return;
+      }
+      joinError.textContent = '';
+      signaling.send('join-room', { code });
+    });
+
+    roomCodeInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase();
+      joinError.textContent = '';
+    });
+
+    function showRoomModal(code) {
+      const roomUrl = `${window.location.origin}/room/${code}`;
+      roomLinkInput.value = roomUrl;
+      displayRoomCode.textContent = code;
+
+      // Generate QR code
+      QRCode.toCanvas(qrCanvas, roomUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#4ecca3',
+          light: '#16213e'
+        }
+      });
+
+      roomModal.classList.remove('hidden');
+    }
+
+    copyLinkBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(roomLinkInput.value);
+        copyLinkBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyLinkBtn.textContent = 'Copy';
+        }, 2000);
+      } catch (err) {
+        roomLinkInput.select();
+        document.execCommand('copy');
+      }
+    });
+
+    cancelRoomBtn.addEventListener('click', () => {
+      roomModal.classList.add('hidden');
+      currentRoomCode = null;
+      // Reconnect to reset state
+      signaling.disconnect();
+      signaling.connect();
+    });
+  </script>
 </body>
 </html>
