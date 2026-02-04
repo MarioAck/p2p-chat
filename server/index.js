@@ -61,17 +61,27 @@ function handleMessage(ws, message) {
 
     case 'join-room': {
       const { code } = message;
-      const result = rooms.joinRoom(code.toUpperCase(), ws);
+      if (!code) {
+        ws.send(JSON.stringify({ type: 'error', error: 'Room code is required' }));
+        break;
+      }
+      const result = rooms.joinOrCreate(code.toUpperCase(), ws);
 
       if (result.success) {
-        ws.send(JSON.stringify({ type: 'room-joined', code: code.toUpperCase() }));
+        ws.send(JSON.stringify({
+          type: 'room-joined',
+          code: code.toUpperCase(),
+          isHost: result.isHost
+        }));
 
-        // Notify host that guest joined
-        const host = result.room.host;
-        if (host && host.readyState === WebSocket.OPEN) {
-          host.send(JSON.stringify({ type: 'peer-joined' }));
+        // If there's already a peer in the room, notify them
+        if (result.hasExistingPeer) {
+          const peer = rooms.getPeer(ws);
+          if (peer && peer.readyState === WebSocket.OPEN) {
+            peer.send(JSON.stringify({ type: 'peer-joined' }));
+          }
         }
-        console.log(`Guest joined room: ${code}`);
+        console.log(`User joined room ${code} as ${result.isHost ? 'host' : 'guest'}`);
       } else {
         ws.send(JSON.stringify({ type: 'error', error: result.error }));
       }
@@ -80,9 +90,13 @@ function handleMessage(ws, message) {
 
     case 'check-room': {
       const { code } = message;
+      if (!code) {
+        ws.send(JSON.stringify({ type: 'room-status', exists: false, isFull: false }));
+        break;
+      }
       const exists = rooms.roomExists(code.toUpperCase());
       const room = rooms.getRoom(code.toUpperCase());
-      const isFull = room && room.guest !== null;
+      const isFull = room && room.host && room.guest;
       ws.send(JSON.stringify({ type: 'room-status', exists, isFull }));
       break;
     }

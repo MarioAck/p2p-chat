@@ -33,12 +33,17 @@ class App {
       this.signaling.send('join-room', { code: this.roomCode });
     });
 
-    this.signaling.on('room-joined', ({ code }) => {
-      console.log('Joined room as guest:', code);
-      this.isHost = false;
-      this.webrtc.setHost(false);
-      this.ui.setConnectionStatus('connecting');
-      this.ui.addSystemMessage('Joined room. Waiting for connection...');
+    this.signaling.on('room-joined', ({ code, isHost }) => {
+      console.log('Joined room:', code, 'as', isHost ? 'host' : 'guest');
+      this.isHost = isHost;
+      this.webrtc.setHost(isHost);
+      if (isHost) {
+        this.ui.setConnectionStatus('waiting');
+        this.ui.addSystemMessage('Waiting for peer to join...');
+      } else {
+        this.ui.setConnectionStatus('connecting');
+        this.ui.addSystemMessage('Joined room. Waiting for connection...');
+      }
     });
 
     this.signaling.on('error', ({ error }) => {
@@ -55,9 +60,7 @@ class App {
     });
 
     this.signaling.on('peer-joined', () => {
-      // This means we are the host and someone joined
-      this.isHost = true;
-      this.webrtc.setHost(true);
+      // Someone joined the room, initiate WebRTC connection
       this.ui.setConnectionStatus('connecting');
       this.ui.addSystemMessage('Peer joined! Establishing connection...');
     });

@@ -29,22 +29,43 @@ class RoomManager {
     return code;
   }
 
-  joinRoom(code, guestWs) {
-    const room = this.rooms.get(code);
+  // Join existing room or create if it doesn't exist (for chat page reconnects)
+  joinOrCreate(code, ws) {
+    let room = this.rooms.get(code);
 
     if (!room) {
-      return { success: false, error: 'Room not found' };
+      // Room doesn't exist, create it with this user as host
+      room = {
+        code,
+        host: ws,
+        guest: null,
+        createdAt: Date.now()
+      };
+      this.rooms.set(code, room);
+      ws.roomCode = code;
+      ws.isHost = true;
+      return { success: true, room, isHost: true, hasExistingPeer: false };
     }
 
-    if (room.guest) {
+    // Room exists - check if we can join
+    if (room.host && room.guest) {
       return { success: false, error: 'Room is full' };
     }
 
-    room.guest = guestWs;
-    guestWs.roomCode = code;
-    guestWs.isHost = false;
+    // If no host (host disconnected), become host
+    if (!room.host) {
+      room.host = ws;
+      ws.roomCode = code;
+      ws.isHost = true;
+      const hasExistingPeer = room.guest !== null;
+      return { success: true, room, isHost: true, hasExistingPeer };
+    }
 
-    return { success: true, room };
+    // Join as guest
+    room.guest = ws;
+    ws.roomCode = code;
+    ws.isHost = false;
+    return { success: true, room, isHost: false, hasExistingPeer: true };
   }
 
   getRoom(code) {
@@ -68,11 +89,17 @@ class RoomManager {
     const peer = this.getPeer(ws);
 
     if (ws.isHost) {
-      // Host left - destroy room
-      this.rooms.delete(code);
+      room.host = null;
+      // If guest is also gone, delete room
+      if (!room.guest) {
+        this.rooms.delete(code);
+      }
     } else {
-      // Guest left - room stays, waiting for new guest
       room.guest = null;
+      // If host is also gone, delete room
+      if (!room.host) {
+        this.rooms.delete(code);
+      }
     }
 
     return peer;
