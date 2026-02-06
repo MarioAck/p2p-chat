@@ -43,6 +43,7 @@ class App {
       if (isHost) {
         this.ui.setConnectionStatus('waiting');
         this.ui.addSystemMessage('Waiting for peer to join...');
+        this.loadSavedMessages();
       } else {
         this.ui.setConnectionStatus('connecting');
         this.ui.addSystemMessage('Joined room. Waiting for connection...');
@@ -78,6 +79,7 @@ class App {
     this.webrtc.on('channel-open', () => {
       this.ui.setConnectionStatus('connected');
       this.ui.addSystemMessage('P2P connection established! You can now chat securely.');
+      this.sendHistory();
     });
 
     this.webrtc.on('channel-close', () => {
@@ -89,8 +91,18 @@ class App {
       this.ui.setConnectionStatus('disconnected');
     });
 
-    this.webrtc.on('message', ({ text, timestamp }) => {
-      this.ui.addMessage(text, 'received', timestamp);
+    this.webrtc.on('message', (msg) => {
+      if (msg.type === 'history') {
+        this.ui.addSystemMessage('Loaded previous chat history.');
+        this.ui.loadMessages(msg.messages.map(m => ({
+          text: m.text,
+          type: m.type === 'sent' ? 'received' : 'sent',
+          timestamp: m.timestamp
+        })));
+        return;
+      }
+      this.ui.addMessage(msg.text, 'received', msg.timestamp);
+      this.saveMessage(msg.text, 'received', msg.timestamp);
     });
 
     this.webrtc.on('error', ({ error }) => {
@@ -105,7 +117,38 @@ class App {
   sendMessage(text) {
     const sent = this.webrtc.sendMessage(text);
     if (sent) {
-      this.ui.addMessage(text, 'sent');
+      const timestamp = Date.now();
+      this.ui.addMessage(text, 'sent', timestamp);
+      this.saveMessage(text, 'sent', timestamp);
+    }
+  }
+
+  sendHistory() {
+    if (!this.isHost) return;
+    const key = `chat_${this.roomCode}`;
+    const messages = JSON.parse(localStorage.getItem(key) || '[]');
+    if (messages.length === 0) return;
+    this.webrtc.dataChannel.send(JSON.stringify({
+      type: 'history',
+      messages: messages
+    }));
+  }
+
+  saveMessage(text, type, timestamp) {
+    if (!this.isHost) return;
+    const key = `chat_${this.roomCode}`;
+    const messages = JSON.parse(localStorage.getItem(key) || '[]');
+    messages.push({ text, type, timestamp });
+    localStorage.setItem(key, JSON.stringify(messages));
+  }
+
+  loadSavedMessages() {
+    if (!this.isHost) return;
+    const key = `chat_${this.roomCode}`;
+    const messages = JSON.parse(localStorage.getItem(key) || '[]');
+    if (messages.length > 0) {
+      this.ui.addSystemMessage('Loaded previous chat history.');
+      this.ui.loadMessages(messages);
     }
   }
 }

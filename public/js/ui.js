@@ -94,6 +94,12 @@ class UI {
     return div.innerHTML;
   }
 
+  loadMessages(messages) {
+    for (const msg of messages) {
+      this.addMessage(msg.text, msg.type, msg.timestamp);
+    }
+  }
+
   clearMessages() {
     this.elements.messages.innerHTML = '';
   }
