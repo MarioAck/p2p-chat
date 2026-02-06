@@ -145,17 +145,21 @@
       roomLinkInput.value = roomUrl;
       displayRoomCode.textContent = code;
 
-      // Generate QR code
-      QRCode.toCanvas(qrCanvas, roomUrl, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#4ecca3',
-          light: '#16213e'
-        }
-      });
-
       roomModal.classList.remove('hidden');
+
+      // Generate QR code
+      try {
+        QRCode.toCanvas(qrCanvas, roomUrl, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#4ecca3',
+            light: '#16213e'
+          }
+        });
+      } catch (err) {
+        console.error('QR code generation failed:', err);
+      }
     }
 
     copyLinkBtn.addEventListener('click', async () => {
