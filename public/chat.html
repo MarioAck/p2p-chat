@@ -42,6 +42,11 @@
     </main>
   </div>
 
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
   <script src="/js/signaling.js"></script>
   <script src="/js/webrtc.js"></script>
   <script src="/js/ui.js"></script>
