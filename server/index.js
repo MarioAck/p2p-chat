@@ -13,13 +13,22 @@ const PORT = process.env.PORT || 3000;
 // Serve static files
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    rooms: rooms.rooms.size,
+    uptime: process.uptime()
+  });
+});
+
 // Room route - serves chat page
 app.get('/room/:code', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/chat.html'));
 });
 
 // Cleanup stale rooms every hour
-setInterval(() => rooms.cleanupStaleRooms(), 3600000);
+const cleanupInterval = setInterval(() => rooms.cleanupStaleRooms(), 3600000);
 
 // WebSocket handling
 wss.on('connection', (ws) => {
@@ -119,6 +128,10 @@ function handleMessage(ws, message) {
   }
 }
 
-server.listen(PORT, () => {
-  console.log(`P2P Chat server running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`P2P Chat server running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { app, server, cleanupInterval };
